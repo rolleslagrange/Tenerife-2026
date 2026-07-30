@@ -112,14 +112,25 @@ function DayItem({
   const [isLongPressing, setIsLongPressing] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapRef = useRef<number>(0);
+  const startPos = useRef<{x: number, y: number} | null>(null);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isExpanded) return;
+    startPos.current = { x: e.clientX, y: e.clientY };
     const nativeEvent = e.nativeEvent;
     timeoutRef.current = setTimeout(() => {
       setIsLongPressing(true);
       dragControls.start(nativeEvent);
     }, 400); // 400ms to activate drag
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!startPos.current || isLongPressing) return;
+    const dx = Math.abs(e.clientX - startPos.current.x);
+    const dy = Math.abs(e.clientY - startPos.current.y);
+    if (dx > 10 || dy > 10) {
+      cancelLongPress();
+    }
   };
 
   const cancelLongPress = () => {
@@ -164,11 +175,12 @@ function DayItem({
         onDelete={() => deleteDay(day.day)}
         isEditing={false}
         isExpanded={isExpanded}
-        isSwipeDisabled={isExpanded}
+        isSwipeDisabled={isExpanded || isLongPressing}
       >
         <div 
           onClick={handleClick}
           onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
           className={cn(
             "p-6 h-full w-full transition-all cursor-pointer relative overflow-hidden flex flex-col active:scale-[0.98]",
             isExpanded && "bg-slate-50/50"

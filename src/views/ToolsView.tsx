@@ -1,4 +1,4 @@
-import { Plane, Bed, Car, Plus, Trash2, Link, Pencil, Map, MapPin, Search, X, Check, Utensils, Info, GripVertical, CheckCircle2, Ticket, Video, Globe, FileText, Upload } from "lucide-react";
+import { Plane, Bed, Car, Plus, Trash2, Link, Pencil, Map, MapPin, Search, X, Check, Utensils, Info, GripVertical, CheckCircle2, Ticket, Video, Globe, FileText, Upload, ListChecks, StickyNote } from "lucide-react";
 import { defaultChecklists, defaultPackingList, itineraryData } from "../data";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { Note, PackingItem, SavedLink, Reservation, DayPlan, Checklist } from "../types";
@@ -46,31 +46,11 @@ function ChecklistItem({ item, onToggle, onRemove, onEdit }: { key?: React.Key, 
   const [isRevealed, setIsRevealed] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(item.label);
-  
-  const editTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragControls = useDragControls();
   const [isDraggingItem, setIsDraggingItem] = useState(false);
 
-  const handlePointerDown = () => {
-    if (isEditing) return;
-    
-    cancelTimers();
-    editTimeoutRef.current = setTimeout(() => {
-      setIsEditing(true);
-    }, 600);
-
-    const handleGlobalPointerUp = () => {
-      cancelTimers();
-      window.removeEventListener('pointerup', handleGlobalPointerUp);
-    };
-    window.addEventListener('pointerup', handleGlobalPointerUp);
-  };
-
-  const cancelTimers = () => {
-    if (editTimeoutRef.current) clearTimeout(editTimeoutRef.current);
-  };
-
   const handleDragEnd = (e: any, info: PanInfo) => {
+    setIsDraggingItem(false);
     if (info.offset.x < -40 || info.velocity.x < -300) {
       setIsRevealed(true);
     } else {
@@ -103,28 +83,44 @@ function ChecklistItem({ item, onToggle, onRemove, onEdit }: { key?: React.Key, 
       id={item.id}
       dragListener={false}
       dragControls={dragControls}
-      onDragStart={() => {
-        setIsDraggingItem(true);
-        cancelTimers();
-      }}
+      onDragStart={() => setIsDraggingItem(true)}
       onDragEnd={() => setIsDraggingItem(false)}
       className="relative rounded-xl w-full"
       style={{ zIndex: isDraggingItem ? 50 : 1 }}
     >
-      <div className="absolute inset-y-0 right-0 flex items-center justify-end pr-3 bg-red-50 text-red-500 rounded-xl w-full overflow-hidden">
-        <button onClick={onRemove} className="w-8 h-8 rounded-full flex items-center justify-center bg-red-100 hover:bg-red-200 transition-colors shadow-sm">
+      {/* Revealed actions: Edit + Delete */}
+      <div className="absolute inset-y-0 right-0 flex items-center justify-end pr-3 gap-2 bg-slate-100 rounded-xl w-full overflow-hidden">
+        <button 
+          onClick={() => { setIsEditing(true); setIsRevealed(false); }} 
+          className="w-8 h-8 rounded-full flex items-center justify-center bg-orange-100 hover:bg-orange-200 text-orange-600 transition-colors shadow-sm"
+          title="Editar"
+        >
+          <Pencil className="w-4 h-4" />
+        </button>
+        <button 
+          onClick={onRemove} 
+          className="w-8 h-8 rounded-full flex items-center justify-center bg-red-100 hover:bg-red-200 text-red-600 transition-colors shadow-sm"
+          title="Eliminar"
+        >
           <Trash2 className="w-4 h-4" />
         </button>
       </div>
       <motion.div
         drag="x"
         dragDirectionLock
-        dragConstraints={{ left: -60, right: 0 }}
+        dragConstraints={{ left: -110, right: 0 }}
         dragElastic={0.1}
-        onDragStart={cancelTimers}
+        dragMomentum={false}
+        onDragStart={() => setIsDraggingItem(true)}
         onDragEnd={handleDragEnd}
-        animate={{ x: isRevealed ? -60 : 0 }}
-        onPointerDown={handlePointerDown}
+        animate={{ x: isRevealed ? -110 : 0 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+        onClickCapture={(e) => {
+          if (isRevealed || isDraggingItem) {
+            e.stopPropagation();
+            if (isRevealed) setIsRevealed(false);
+          }
+        }}
         className="relative bg-white w-full h-full z-10 flex items-center gap-3 rounded-xl p-2 select-none"
         style={{ touchAction: 'pan-y' }}
       >
@@ -335,6 +331,13 @@ const LINK_CATEGORIES: { id: SavedLink['category'], icon: any, label: string, co
   { id: 'Web', icon: Globe, label: 'Web General', colorClass: 'bg-slate-200 text-slate-600' }
 ];
 
+const TOOL_TABS = [
+  { id: 0, label: 'Reservas', icon: Plane },
+  { id: 1, label: 'Enlaces', icon: Link },
+  { id: 2, label: 'Listas', icon: ListChecks },
+  { id: 3, label: 'Notas', icon: StickyNote },
+];
+
 export default function ToolsView() {
   const [checklists, setChecklists] = useLocalStorage<Checklist[]>('tenerife_checklists', []);
   const [oldPackingList] = useLocalStorage<PackingItem[]>('tenerife_packing', []);
@@ -351,6 +354,14 @@ export default function ToolsView() {
 
   const [activeChecklistId, setActiveChecklistId] = useState<string>('');
   const [isDraggingTab, setIsDraggingTab] = useState(false);
+  const [activeTool, setActiveTool] = useState(0);
+  const [toolSlideDir, setToolSlideDir] = useState(0);
+
+  const switchTool = (idx: number) => {
+    if (idx === activeTool) return;
+    setToolSlideDir(idx > activeTool ? 1 : -1);
+    setActiveTool(idx);
+  };
   
   useEffect(() => {
     if (checklists.length > 0 && !activeChecklistId) {
@@ -606,619 +617,560 @@ export default function ToolsView() {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && activeResId) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const dataUrl = event.target?.result as string;
-        setReservations(reservations.map(res => 
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (isAddingRes || editingResId) {
+        // In the add/edit form: set the document URL state field directly
+        setResDocUrl(dataUrl);
+      } else if (activeResId) {
+        // Direct attachment from reservation card
+        setReservations(reservations.map(res =>
           res.id === activeResId ? { ...res, documentUrl: dataUrl } : res
         ));
-      };
-      reader.readAsDataURL(file);
-    }
-    setActiveResId(null);
+        setActiveResId(null);
+      }
+    };
+    reader.readAsDataURL(file);
+    // Reset input so the same file can be selected again
+    e.target.value = '';
   };
 
 
+
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      <div className="mt-4">
+    <div className="flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500 pb-6">
+      <div className="mt-4 mb-6">
         <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none mb-2">Herramientas</h1>
         <p className="text-sm font-medium text-slate-500">Logística y apuntes del viaje</p>
       </div>
 
-      {/* Reservations Summary */}
-      <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col transition-all duration-300">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-slate-400 uppercase text-xs tracking-widest">Reservas</h3>
-          {!isAddingRes && !editingResId && (
-            <button 
-              onClick={openAddResModal}
-              className="w-9 h-9 bg-orange-500 text-white rounded-xl flex items-center justify-center hover:bg-orange-600 active:scale-95 transition-all shadow-sm shadow-orange-200"
-              title="Nueva Reserva"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
-          )}
-        </div>
-        
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          onChange={handleFileUpload} 
-          className="hidden" 
-          accept="application/pdf,image/*"
-        />
-
-        {/* Add / Edit Form */}
-        {(isAddingRes || editingResId) && (
-          <form onSubmit={handleSaveRes} className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200 flex flex-col gap-4 mb-4 animate-in fade-in">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                {editingResId ? 'Editar Reserva' : 'Nueva Reserva'}
-              </span>
-              <button 
-                type="button" 
-                onClick={closeResForm} 
-                className="text-slate-400 hover:text-slate-600 p-1"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Type selector pills */}
-            <div className="flex gap-2">
-              {[
-                { id: 'flight', label: 'Vuelo', icon: Plane, activeColor: 'bg-blue-500 text-white' },
-                { id: 'hotel', label: 'Alojamiento', icon: Bed, activeColor: 'bg-green-500 text-white' },
-                { id: 'car', label: 'Coche', icon: Car, activeColor: 'bg-orange-500 text-white' },
-              ].map(t => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setResType(t.id as any)}
-                  className={cn(
-                    "flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border",
-                    resType === t.id ? `${t.activeColor} border-transparent shadow-sm scale-102` : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
-                  )}
-                >
-                  <t.icon className="w-4 h-4" />
-                  {t.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input 
-                type="text"
-                value={resTitle}
-                onChange={(e) => setResTitle(e.target.value)}
-                placeholder="Título (ej. Vuelo Ida, Hotel Panorámica)"
-                className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 text-slate-900 font-medium"
-                required
-                autoFocus
-              />
-              <input 
-                type="text"
-                value={resSubtitle}
-                onChange={(e) => setResSubtitle(e.target.value)}
-                placeholder="Subtítulo / Horario (ej. 16:10, El Toscal)"
-                className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 text-slate-900"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input 
-                type="text"
-                value={resCode}
-                onChange={(e) => setResCode(e.target.value)}
-                placeholder="Código de reserva (ej. #RYA-881)"
-                className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 text-slate-900 font-mono"
-              />
-              <div className="flex gap-2 items-center">
-                <input 
-                  type="text"
-                  value={resDocUrl}
-                  onChange={(e) => setResDocUrl(e.target.value)}
-                  placeholder="URL o enlace a documento"
-                  className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 text-slate-900 flex-1 min-w-0"
-                />
-                <button 
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-3 py-2.5 bg-white border border-slate-200 text-slate-600 hover:text-orange-600 hover:border-orange-200 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 shadow-sm"
-                  title="Subir archivo local"
-                >
-                  <Upload className="w-4 h-4 text-orange-500" />
-                  <span className="hidden sm:inline">Archivo</span>
-                </button>
-              </div>
-            </div>
-
-            {resDocUrl && (
-              <div className="flex items-center justify-between bg-white border border-slate-200 px-3.5 py-2 rounded-xl text-xs">
-                <span className="font-medium text-slate-600 truncate flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-orange-500 shrink-0" />
-                  Documento adjunto guardado
-                </span>
-                <button 
-                  type="button"
-                  onClick={() => setResDocUrl('')}
-                  className="text-red-500 hover:text-red-700 font-bold ml-2 shrink-0 cursor-pointer"
-                >
-                  Quitar documento
-                </button>
-              </div>
+      {/* Tool Navigation Tabs */}
+      <div className="grid grid-cols-4 gap-1 bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 mb-6 shrink-0">
+        {TOOL_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => switchTool(tab.id)}
+            className={cn(
+              "flex flex-col items-center gap-1.5 py-2.5 px-1 rounded-xl text-[11px] font-bold transition-all duration-200",
+              activeTool === tab.id
+                ? "bg-orange-500 text-white shadow-sm shadow-orange-200"
+                : "text-slate-500 hover:bg-slate-50"
             )}
+          >
+            <tab.icon className="w-4 h-4" />
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-            <div className="flex gap-2 justify-end mt-1">
-              <button 
-                type="button"
-                onClick={closeResForm}
-                className="px-4 py-2 text-xs font-bold text-slate-500 bg-slate-200/70 rounded-xl hover:bg-slate-200 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button 
-                type="submit"
-                disabled={!resTitle.trim()}
-                className="px-5 py-2 text-xs font-bold text-white bg-orange-500 rounded-xl hover:bg-orange-600 transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-              >
-                <Check className="w-4 h-4" /> Guardar
-              </button>
-            </div>
-          </form>
-        )}
+      {/* Hidden file input — lives outside panels so it persists */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        className="hidden"
+        accept="application/pdf,image/*"
+      />
 
-        {/* Reservations List */}
-        <div className="space-y-3">
-          {reservations.length === 0 ? (
-            <p className="text-sm font-medium text-slate-400 text-center py-6">No hay reservas registradas.</p>
-          ) : (
-            reservations.map(res => (
-              <SwipeableItem
-                key={res.id}
-                onEdit={() => openEditResModal(res)}
-                onDelete={() => removeReservation(res.id)}
-                isEditing={editingResId === res.id}
-              >
-                <div 
-                  className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100 hover:border-slate-200 transition-all cursor-pointer select-none"
-                  onClick={() => {
-                    if (res.documentUrl) {
-                      const link = document.createElement('a');
-                      link.href = res.documentUrl;
-                      link.target = '_blank';
-                      link.rel = 'noopener noreferrer';
-                      if (res.documentUrl.startsWith('data:')) {
-                        link.download = `reserva_${res.title.toLowerCase().replace(/\s+/g, '_')}`;
-                      }
-                      link.click();
-                    } else {
-                      openEditResModal(res);
-                    }
-                  }}
-                >
-                  <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                    <div className={cn(
-                      "w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-sm text-white",
-                      res.type === 'flight' ? "bg-blue-500" :
-                      res.type === 'hotel' ? "bg-green-500" :
-                      "bg-orange-500"
-                    )}>
-                      {res.type === 'flight' && <Plane className="w-5 h-5" />}
-                      {res.type === 'hotel' && <Bed className="w-5 h-5" />}
-                      {res.type === 'car' && <Car className="w-5 h-5" />}
-                    </div>
+      {/* Sliding Panels */}
+      <AnimatePresence mode="wait" custom={toolSlideDir} initial={false}>
+        <motion.div
+          key={activeTool}
+          custom={toolSlideDir}
+          variants={{
+            enter: (dir: number) => ({ x: dir > 0 ? '55%' : '-55%', opacity: 0 }),
+            center: { x: 0, opacity: 1 },
+            exit: (dir: number) => ({ x: dir > 0 ? '-55%' : '55%', opacity: 0 }),
+          }}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+        >
 
-                    <div className="flex flex-col min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-bold text-slate-900 text-sm truncate">{res.title}</p>
-                        {res.code && (
-                          <span className={cn(
-                            "text-[10px] font-extrabold px-2 py-0.5 rounded-md tracking-wider font-mono",
-                            res.type === 'flight' ? "text-blue-700 bg-blue-100" :
-                            res.type === 'hotel' ? "text-green-700 bg-green-100" :
-                            "text-orange-700 bg-orange-100"
-                          )}>{res.code}</span>
+          {/* ============================================================ */}
+          {/* PANEL 0: RESERVAS                                             */}
+          {/* ============================================================ */}
+          {activeTool === 0 && (
+            <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col transition-all duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-slate-400 uppercase text-xs tracking-widest">Reservas</h3>
+                {!isAddingRes && !editingResId && (
+                  <button
+                    onClick={openAddResModal}
+                    className="w-9 h-9 bg-orange-500 text-white rounded-xl flex items-center justify-center hover:bg-orange-600 active:scale-95 transition-all shadow-sm shadow-orange-200"
+                    title="Nueva Reserva"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Add / Edit Form */}
+              {(isAddingRes || editingResId) && (
+                <form onSubmit={handleSaveRes} className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200 flex flex-col gap-4 mb-4 animate-in fade-in">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      {editingResId ? 'Editar Reserva' : 'Nueva Reserva'}
+                    </span>
+                    <button type="button" onClick={closeResForm} className="text-slate-400 hover:text-slate-600 p-1">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Type selector */}
+                  <div className="flex gap-2">
+                    {[
+                      { id: 'flight', label: 'Vuelo', icon: Plane, activeColor: 'bg-blue-500 text-white' },
+                      { id: 'hotel', label: 'Alojamiento', icon: Bed, activeColor: 'bg-green-500 text-white' },
+                      { id: 'car', label: 'Coche', icon: Car, activeColor: 'bg-orange-500 text-white' },
+                    ].map(t => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setResType(t.id as any)}
+                        className={cn(
+                          "flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border",
+                          resType === t.id ? `${t.activeColor} border-transparent shadow-sm` : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
                         )}
-                        {res.documentUrl && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-orange-600 bg-orange-100/80 px-2 py-0.5 rounded-md uppercase tracking-wider">
-                            <FileText className="w-3 h-3" /> Doc
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs font-medium text-slate-500 truncate">{res.subtitle}</p>
+                      >
+                        <t.icon className="w-4 h-4" />
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input
+                      type="text" value={resTitle} onChange={(e) => setResTitle(e.target.value)}
+                      placeholder="Título (ej. Vuelo Ida, Hotel Panorámica)"
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 text-slate-900 font-medium"
+                      required autoFocus
+                    />
+                    <input
+                      type="text" value={resSubtitle} onChange={(e) => setResSubtitle(e.target.value)}
+                      placeholder="Subtítulo / Horario (ej. 16:10, El Toscal)"
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 text-slate-900"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input
+                      type="text" value={resCode} onChange={(e) => setResCode(e.target.value)}
+                      placeholder="Código de reserva (ej. #RYA-881)"
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 text-slate-900 font-mono"
+                    />
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="text" value={resDocUrl} onChange={(e) => setResDocUrl(e.target.value)}
+                        placeholder="URL o enlace a documento"
+                        className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 text-slate-900 flex-1 min-w-0"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-3 py-2.5 bg-white border border-slate-200 text-slate-600 hover:text-orange-600 hover:border-orange-200 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 shadow-sm"
+                        title="Subir archivo local"
+                      >
+                        <Upload className="w-4 h-4 text-orange-500" />
+                        <span className="hidden sm:inline">Archivo</span>
+                      </button>
                     </div>
                   </div>
-                </div>
-              </SwipeableItem>
-            ))
-          )}
-        </div>
-      </section>
 
-      {/* Saved Links */}
-      <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col transition-all duration-300">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-slate-400 uppercase text-xs tracking-widest">Enlaces Guardados</h3>
-          {!isAddingLink && (
-            <button 
-              onClick={() => setIsAddingLink(true)}
-              className="w-9 h-9 bg-orange-500 text-white rounded-xl flex items-center justify-center hover:bg-orange-600 active:scale-95 transition-all shadow-sm shadow-orange-200"
-              title="Nuevo Enlace"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
-          )}
-        </div>
-        
-        {isAddingLink ? (
-          <form onSubmit={handleAddLink} className="flex flex-col gap-4 animate-in fade-in">
-            
-            <input 
-              type="text"
-              value={newLinkName}
-              onChange={(e) => setNewLinkName(e.target.value)}
-              placeholder="Título del enlace (ej. Restaurante recomendado)"
-              className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 text-slate-900 w-full font-medium"
-              autoFocus
-            />
-
-            <div>
-              <div className="flex flex-wrap gap-2">
-                {LINK_CATEGORIES.map(cat => (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => setNewLinkCategory(cat.id)}
-                    className={cn(
-                      "flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold transition-all border",
-                      newLinkCategory === cat.id 
-                        ? cn(cat.colorClass, "border-transparent shadow-sm scale-105")
-                        : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
-                    )}
-                  >
-                    <cat.icon className="w-4 h-4" />
-                    {cat.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <input 
-              type="url"
-              value={newLinkUrl}
-              onChange={(e) => setNewLinkUrl(e.target.value)}
-              placeholder="https://..."
-              className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 text-slate-900 w-full"
-            />
-
-            <div className="flex gap-2 justify-end mt-2">
-              <button 
-                type="button"
-                onClick={() => setIsAddingLink(false)}
-                className="px-4 py-2 text-xs font-bold text-slate-500 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button 
-                type="submit"
-                disabled={!newLinkName.trim() || !newLinkUrl.trim()}
-                className="px-5 py-2 text-xs font-bold text-white bg-orange-500 rounded-xl hover:bg-orange-600 transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-              >
-                <Check className="w-4 h-4" /> Guardar
-              </button>
-            </div>
-          </form>
-        ) : (
-          <div className="flex flex-col gap-4 animate-in fade-in">
-            <div className="relative w-full">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input 
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar enlaces por nombre o URL..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-slate-900"
-              />
-              {searchQuery && (
-                <button 
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            {/* Filter Chips */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-              {LINK_CATEGORIES.map(cat => (
-                <button
-                  key={cat.id}
-                  onClick={() => setActiveCategoryFilter(activeCategoryFilter === cat.id ? null : cat.id)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1.5",
-                    activeCategoryFilter === cat.id ? cat.colorClass : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  {resDocUrl && (
+                    <div className="flex items-center justify-between bg-white border border-slate-200 px-3.5 py-2 rounded-xl text-xs">
+                      <span className="font-medium text-slate-600 truncate flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-orange-500 shrink-0" />
+                        Documento adjunto guardado
+                      </span>
+                      <button type="button" onClick={() => setResDocUrl('')} className="text-red-500 hover:text-red-700 font-bold ml-2 shrink-0 cursor-pointer">
+                        Quitar
+                      </button>
+                    </div>
                   )}
+
+                  <div className="flex gap-2 justify-end mt-1">
+                    <button type="button" onClick={closeResForm} className="px-4 py-2 text-xs font-bold text-slate-500 bg-slate-200/70 rounded-xl hover:bg-slate-200 transition-colors">
+                      Cancelar
+                    </button>
+                    <button type="submit" disabled={!resTitle.trim()} className="px-5 py-2 text-xs font-bold text-white bg-orange-500 rounded-xl hover:bg-orange-600 transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50">
+                      <Check className="w-4 h-4" /> Guardar
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Reservations List */}
+              <div className="space-y-3">
+                {reservations.length === 0 ? (
+                  <p className="text-sm font-medium text-slate-400 text-center py-6">No hay reservas registradas.</p>
+                ) : (
+                  reservations.map(res => (
+                    <SwipeableItem
+                      key={res.id}
+                      onEdit={() => openEditResModal(res)}
+                      onDelete={() => removeReservation(res.id)}
+                      isEditing={editingResId === res.id}
+                    >
+                      <div
+                        className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100 hover:border-slate-200 transition-all cursor-pointer select-none"
+                        onClick={() => {
+                          if (res.documentUrl) {
+                            window.open(res.documentUrl, '_blank', 'noopener,noreferrer');
+                          } else {
+                            openEditResModal(res);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                          <div className={cn(
+                            "w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-sm text-white",
+                            res.type === 'flight' ? "bg-blue-500" : res.type === 'hotel' ? "bg-green-500" : "bg-orange-500"
+                          )}>
+                            {res.type === 'flight' && <Plane className="w-5 h-5" />}
+                            {res.type === 'hotel' && <Bed className="w-5 h-5" />}
+                            {res.type === 'car' && <Car className="w-5 h-5" />}
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-bold text-slate-900 text-sm truncate">{res.title}</p>
+                              {res.code && (
+                                <span className={cn(
+                                  "text-[10px] font-extrabold px-2 py-0.5 rounded-md tracking-wider font-mono",
+                                  res.type === 'flight' ? "text-blue-700 bg-blue-100" : res.type === 'hotel' ? "text-green-700 bg-green-100" : "text-orange-700 bg-orange-100"
+                                )}>{res.code}</span>
+                              )}
+                              {res.documentUrl && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-orange-600 bg-orange-100/80 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                  <FileText className="w-3 h-3" /> Doc
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs font-medium text-slate-500 truncate">{res.subtitle}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </SwipeableItem>
+                  ))
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* ============================================================ */}
+          {/* PANEL 1: ENLACES                                              */}
+          {/* ============================================================ */}
+          {activeTool === 1 && (
+            <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col transition-all duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-slate-400 uppercase text-xs tracking-widest">Enlaces Guardados</h3>
+                {!isAddingLink && (
+                  <button
+                    onClick={() => setIsAddingLink(true)}
+                    className="w-9 h-9 bg-orange-500 text-white rounded-xl flex items-center justify-center hover:bg-orange-600 active:scale-95 transition-all shadow-sm shadow-orange-200"
+                    title="Nuevo Enlace"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+
+              {isAddingLink ? (
+                <form onSubmit={handleAddLink} className="flex flex-col gap-4 animate-in fade-in">
+                  <input
+                    type="text" value={newLinkName} onChange={(e) => setNewLinkName(e.target.value)}
+                    placeholder="Título del enlace (ej. Restaurante recomendado)"
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 text-slate-900 w-full font-medium"
+                    autoFocus
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    {LINK_CATEGORIES.map(cat => (
+                      <button
+                        key={cat.id} type="button" onClick={() => setNewLinkCategory(cat.id)}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold transition-all border",
+                          newLinkCategory === cat.id ? cn(cat.colorClass, "border-transparent shadow-sm scale-105") : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
+                        )}
+                      >
+                        <cat.icon className="w-4 h-4" />
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="url" value={newLinkUrl} onChange={(e) => setNewLinkUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 text-slate-900 w-full"
+                  />
+                  <div className="flex gap-2 justify-end mt-2">
+                    <button type="button" onClick={() => setIsAddingLink(false)} className="px-4 py-2 text-xs font-bold text-slate-500 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">
+                      Cancelar
+                    </button>
+                    <button type="submit" disabled={!newLinkName.trim() || !newLinkUrl.trim()} className="px-5 py-2 text-xs font-bold text-white bg-orange-500 rounded-xl hover:bg-orange-600 transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50">
+                      <Check className="w-4 h-4" /> Guardar
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="flex flex-col gap-4 animate-in fade-in">
+                  <div className="relative w-full">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Buscar enlaces por nombre o URL..."
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-slate-900"
+                    />
+                    {searchQuery && (
+                      <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                    {LINK_CATEGORIES.map(cat => (
+                      <button
+                        key={cat.id}
+                        onClick={() => setActiveCategoryFilter(activeCategoryFilter === cat.id ? null : cat.id)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1.5",
+                          activeCategoryFilter === cat.id ? cat.colorClass : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                        )}
+                      >
+                        <cat.icon className="w-3.5 h-3.5" />
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="space-y-3">
+                    {(() => {
+                      if (!searchQuery && !activeCategoryFilter) return null;
+                      const filteredLinks = links.filter(l => {
+                        const matchesSearch = l.title.toLowerCase().includes(searchQuery.toLowerCase()) || l.url.toLowerCase().includes(searchQuery.toLowerCase());
+                        const matchesCategory = activeCategoryFilter ? l.category === activeCategoryFilter : true;
+                        return matchesSearch && matchesCategory;
+                      });
+                      if (filteredLinks.length === 0) {
+                        return <p className="text-sm font-medium text-slate-400 text-center py-4 bg-slate-50 rounded-2xl border border-slate-200 border-dashed animate-in fade-in zoom-in">No hay coincidencias.</p>;
+                      }
+                      return filteredLinks.map(link => {
+                        const catInfo = LINK_CATEGORIES.find(c => c.id === link.category) || LINK_CATEGORIES[5];
+                        const Icon = catInfo.icon;
+                        return (
+                          <div key={link.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl group border border-slate-100 hover:border-slate-300 transition-colors animate-in fade-in slide-in-from-bottom-2">
+                            <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 flex-1 overflow-hidden">
+                              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm", catInfo.colorClass)}>
+                                <Icon className="w-5 h-5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-bold text-sm text-slate-900 truncate">{link.title}</p>
+                                <p className="text-xs text-slate-500 truncate">{link.url}</p>
+                              </div>
+                            </a>
+                            <button onClick={() => removeLink(link.id)} className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 shrink-0 transition-colors">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* ============================================================ */}
+          {/* PANEL 2: LISTAS                                               */}
+          {/* ============================================================ */}
+          {activeTool === 2 && (
+            <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col relative">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold text-slate-400 uppercase text-xs tracking-widest">Listas</h3>
+                {activeChecklist && (
+                  <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2.5 py-1 rounded-full">
+                    {activeChecklist.items.filter(i => i.checked).length}/{activeChecklist.items.length}
+                  </span>
+                )}
+              </div>
+
+              {/* Checklist tabs */}
+              <div ref={tabsContainerRef} className="flex items-center justify-between gap-2 mb-4 relative">
+                {isEditingName ? (
+                  <form onSubmit={handleRenameChecklist} className="flex flex-1 gap-2 animate-in fade-in">
+                    <input
+                      type="text" value={editingNameValue} onChange={(e) => setEditingNameValue(e.target.value)}
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-orange-500 text-slate-900 font-bold"
+                      autoFocus onBlur={handleRenameChecklist}
+                    />
+                  </form>
+                ) : (
+                  <div className={cn(
+                    "flex items-center gap-2 pb-1 scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] flex-1 transition-all",
+                    isDraggingTab ? "overflow-visible" : "overflow-x-auto"
+                  )}>
+                    <Reorder.Group axis="x" values={checklists} onReorder={setChecklists} className="flex items-center gap-2">
+                      {checklists.map(list => (
+                        <ChecklistTab
+                          key={list.id} list={list} isActive={activeChecklistId === list.id}
+                          onClick={() => setActiveChecklistId(list.id)}
+                          onRename={() => { setEditingNameValue(list.name); setIsEditingName(true); setActiveChecklistId(list.id); }}
+                          onDelete={removeChecklist}
+                          onDragStart={() => setIsDraggingTab(true)}
+                          onDragEnd={() => { setTimeout(() => setIsDraggingTab(false), 500); }}
+                          constraintsRef={tabsContainerRef}
+                        />
+                      ))}
+                    </Reorder.Group>
+                  </div>
+                )}
+
+                {!isEditingName && (
+                  <AnimatePresence mode="popLayout">
+                    {isDraggingTab ? (
+                      <TrashZone key="trash" />
+                    ) : (
+                      <motion.button
+                        key="add"
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0, opacity: 0 }}
+                        onClick={() => setIsCreatingChecklist(true)}
+                        className="w-9 h-9 bg-orange-500 text-white rounded-xl flex items-center justify-center shrink-0 hover:bg-orange-600 active:scale-95 transition-all shadow-sm shadow-orange-200"
+                        title="Crear nueva lista"
+                      >
+                        <Plus className="w-5 h-5" />
+                      </motion.button>
+                    )}
+                  </AnimatePresence>
+                )}
+              </div>
+
+              {isCreatingChecklist && (
+                <form onSubmit={handleCreateChecklist} className="flex gap-2 mb-4 animate-in fade-in slide-in-from-top-2">
+                  <input
+                    type="text" value={newChecklistName} onChange={(e) => setNewChecklistName(e.target.value)}
+                    placeholder="Nombre de la nueva lista..."
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-slate-900"
+                    autoFocus
+                  />
+                  <button type="submit" className="bg-slate-900 text-white rounded-xl px-4 flex items-center justify-center shrink-0 hover:bg-slate-800 transition-colors text-xs font-bold shadow-md">
+                    Crear
+                  </button>
+                  <button type="button" onClick={() => setIsCreatingChecklist(false)} className="bg-white border border-slate-200 text-slate-500 rounded-xl px-3 flex items-center justify-center shrink-0 hover:bg-slate-50 transition-colors text-xs font-bold shadow-sm">
+                    Cancelar
+                  </button>
+                </form>
+              )}
+
+              {activeChecklist && !isCreatingChecklist && (
+                <div className="flex flex-col animate-in fade-in duration-300">
+                  <div className="space-y-2 max-h-80 overflow-y-auto scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] overflow-x-hidden mb-4">
+                    <Reorder.Group
+                      axis="y" values={activeChecklist.items}
+                      onReorder={(newItems) => {
+                        setChecklists(checklists.map(c => c.id === activeChecklist.id ? { ...c, items: newItems } : c));
+                      }}
+                      className="space-y-2"
+                    >
+                      {activeChecklist.items.map(item => (
+                        <ChecklistItem
+                          key={item.id} item={item}
+                          onToggle={() => toggleItem(item.id)}
+                          onRemove={() => removePackingItem(item.id)}
+                          onEdit={(newText) => editPackingItem(item.id, newText)}
+                        />
+                      ))}
+                    </Reorder.Group>
+                    {activeChecklist.items.length === 0 && (
+                      <p className="text-sm font-medium text-slate-400 text-center py-4 bg-slate-50 rounded-2xl border border-slate-200 border-dashed">Esta lista está vacía.</p>
+                    )}
+                  </div>
+
+                  <form onSubmit={handleAddPackingItem} className="flex gap-2">
+                    <input
+                      type="text" value={newPackingItem} onChange={(e) => setNewPackingItem(e.target.value)}
+                      placeholder={`Añadir ítem a ${activeChecklist.name}...`}
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-slate-900"
+                    />
+                    <button type="submit" className="w-11 h-11 bg-orange-500 text-white rounded-xl flex items-center justify-center shrink-0 hover:bg-orange-600 active:scale-95 transition-all shadow-sm shadow-orange-200" title="Añadir ítem">
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  </form>
+                </div>
+              )}
+              {!activeChecklist && !isCreatingChecklist && (
+                <p className="text-sm font-medium text-slate-400 text-center py-4">No hay listas. Crea una nueva.</p>
+              )}
+            </section>
+          )}
+
+          {/* ============================================================ */}
+          {/* PANEL 3: NOTAS                                                */}
+          {/* ============================================================ */}
+          {activeTool === 3 && (
+            <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col">
+              <h3 className="font-bold text-slate-400 uppercase text-xs tracking-widest mb-4">Notas Rápidas</h3>
+
+              <form
+                onSubmit={(e) => { e.preventDefault(); handleAddNote(); }}
+                className="flex gap-2 items-start mb-4"
+              >
+                <textarea
+                  ref={noteInputRef} value={newNote}
+                  onChange={(e) => {
+                    setNewNote(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = `${Math.min(200, Math.max(44, e.target.scrollHeight))}px`;
+                  }}
+                  placeholder="Escribir apunte..."
+                  rows={1}
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-slate-900 resize-none overflow-hidden min-h-[44px] transition-all"
+                />
+                <button
+                  type="submit"
+                  onMouseDown={(e) => { if (newNote.trim()) { e.preventDefault(); handleAddNote(); } }}
+                  onTouchStart={(e) => { if (newNote.trim()) { e.preventDefault(); handleAddNote(); } }}
+                  disabled={!newNote.trim()}
+                  className="w-11 h-11 bg-orange-500 text-white rounded-xl flex items-center justify-center shrink-0 hover:bg-orange-600 active:scale-95 transition-all shadow-sm shadow-orange-200 disabled:opacity-40 disabled:scale-100 disabled:shadow-none cursor-pointer"
+                  title="Guardar nota"
                 >
-                  <cat.icon className="w-3.5 h-3.5" />
-                  {cat.label}
+                  <Plus className="w-5 h-5 pointer-events-none" />
                 </button>
-              ))}
-            </div>
+              </form>
 
-            {/* Link List */}
-            <div className="space-y-3">
-              {(() => {
-                if (!searchQuery && !activeCategoryFilter) {
-                  return null;
-                }
-
-                const filteredLinks = links.filter(l => {
-                  const matchesSearch = l.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                                        l.url.toLowerCase().includes(searchQuery.toLowerCase());
-                  const matchesCategory = activeCategoryFilter ? l.category === activeCategoryFilter : true;
-                  return matchesSearch && matchesCategory;
-                });
-                
-                if (filteredLinks.length === 0) {
-                  return <p className="text-sm font-medium text-slate-400 text-center py-4 bg-slate-50 rounded-2xl border border-slate-200 border-dashed animate-in fade-in zoom-in">No hay coincidencias.</p>;
-                }
-
-                return filteredLinks.map(link => {
-                  const catInfo = LINK_CATEGORIES.find(c => c.id === link.category) || LINK_CATEGORIES[5];
-                  const Icon = catInfo.icon;
-                  return (
-                    <div key={link.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl group border border-slate-100 hover:border-slate-300 transition-colors animate-in fade-in slide-in-from-bottom-2">
-                      <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 flex-1 overflow-hidden">
-                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm", catInfo.colorClass)}>
-                          <Icon className="w-5 h-5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-sm text-slate-900 truncate">{link.title}</p>
-                          <p className="text-xs text-slate-500 truncate">{link.url}</p>
-                        </div>
-                      </a>
-                      <button 
-                        onClick={() => removeLink(link.id)} 
-                        className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 shrink-0 transition-colors"
+              <div className="space-y-3">
+                {notes.length === 0 ? (
+                  <p className="text-sm font-medium text-slate-400 text-center py-4 bg-slate-50 rounded-2xl border border-slate-200 border-dashed">Aún no hay notas.</p>
+                ) : (
+                  notes.map(note => (
+                    <div key={note.id} className="bg-orange-50 p-4 rounded-2xl relative group border border-orange-100/80 transition-all">
+                      <button
+                        onClick={() => removeNote(note.id)}
+                        className="absolute top-3 right-3 p-1 text-orange-300 hover:text-red-500 hover:bg-orange-100/80 rounded-lg transition-colors"
+                        title="Eliminar nota"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
+                      <p className="text-sm text-orange-950 whitespace-pre-wrap break-words [word-break:break-word] overflow-wrap-anywhere pr-8 leading-relaxed font-medium">
+                        {note.text}
+                      </p>
+                      <p className="text-[11px] font-extrabold text-orange-800/50 mt-2 tracking-wider uppercase">{note.date}</p>
                     </div>
-                  );
-                });
-              })()}
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* Checklists */}
-      <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col relative">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-bold text-slate-400 uppercase text-xs tracking-widest">Listas</h3>
-          {activeChecklist && (
-            <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2.5 py-1 rounded-full">
-              {activeChecklist.items.filter(i => i.checked).length}/{activeChecklist.items.length}
-            </span>
-          )}
-        </div>
-
-        {/* Tabs for checklists */}
-        <div ref={tabsContainerRef} className="flex items-center justify-between gap-2 mb-4 relative">
-          {isEditingName ? (
-            <form onSubmit={handleRenameChecklist} className="flex flex-1 gap-2 animate-in fade-in">
-              <input
-                type="text"
-                value={editingNameValue}
-                onChange={(e) => setEditingNameValue(e.target.value)}
-                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-orange-500 text-slate-900 font-bold"
-                autoFocus
-                onBlur={handleRenameChecklist}
-              />
-            </form>
-          ) : (
-            <div className={cn(
-              "flex items-center gap-2 pb-1 scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] flex-1 transition-all",
-              isDraggingTab ? "overflow-visible" : "overflow-x-auto"
-            )}>
-              <Reorder.Group 
-                axis="x" 
-                values={checklists} 
-                onReorder={setChecklists} 
-                className="flex items-center gap-2"
-              >
-                {checklists.map(list => (
-                  <ChecklistTab 
-                    key={list.id}
-                    list={list}
-                    isActive={activeChecklistId === list.id}
-                    onClick={() => setActiveChecklistId(list.id)}
-                    onRename={() => {
-                      setEditingNameValue(list.name);
-                      setIsEditingName(true);
-                      setActiveChecklistId(list.id);
-                    }}
-                    onDelete={removeChecklist}
-                    onDragStart={() => setIsDraggingTab(true)}
-                    onDragEnd={() => {
-                      setTimeout(() => setIsDraggingTab(false), 500);
-                    }}
-                    constraintsRef={tabsContainerRef}
-                  />
-                ))}
-              </Reorder.Group>
-            </div>
-          )}
-
-          {!isEditingName && (
-            <AnimatePresence mode="popLayout">
-              {isDraggingTab ? (
-                <TrashZone key="trash" />
-              ) : (
-                <motion.button
-                  key="add"
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0, opacity: 0 }}
-                  onClick={() => setIsCreatingChecklist(true)}
-                  className="w-9 h-9 bg-orange-500 text-white rounded-xl flex items-center justify-center shrink-0 hover:bg-orange-600 active:scale-95 transition-all shadow-sm shadow-orange-200"
-                  title="Crear nueva lista"
-                >
-                  <Plus className="w-5 h-5" />
-                </motion.button>
-              )}
-            </AnimatePresence>
-          )}
-        </div>
-
-        {isCreatingChecklist && (
-          <form onSubmit={handleCreateChecklist} className="flex gap-2 mb-4 animate-in fade-in slide-in-from-top-2">
-            <input 
-              type="text"
-              value={newChecklistName}
-              onChange={(e) => setNewChecklistName(e.target.value)}
-              placeholder="Nombre de la nueva lista..."
-              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-slate-900"
-              autoFocus
-            />
-            <button 
-              type="submit"
-              className="bg-slate-900 text-white rounded-xl px-4 flex items-center justify-center shrink-0 hover:bg-slate-800 transition-colors text-xs font-bold shadow-md"
-            >
-              Crear
-            </button>
-            <button 
-              type="button"
-              onClick={() => setIsCreatingChecklist(false)}
-              className="bg-white border border-slate-200 text-slate-500 rounded-xl px-3 flex items-center justify-center shrink-0 hover:bg-slate-50 transition-colors text-xs font-bold shadow-sm"
-            >
-              Cancelar
-            </button>
-          </form>
-        )}
-
-        {activeChecklist && !isCreatingChecklist && (
-          <div className="flex flex-col animate-in fade-in duration-300">
-            <div className="space-y-2 max-h-80 overflow-y-auto scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] overflow-x-hidden mb-4">
-              <Reorder.Group 
-                axis="y" 
-                values={activeChecklist.items} 
-                onReorder={(newItems) => {
-                  const newChecklists = checklists.map(c => 
-                    c.id === activeChecklist.id ? { ...c, items: newItems } : c
-                  );
-                  setChecklists(newChecklists);
-                }}
-                className="space-y-2"
-              >
-                {activeChecklist.items.map(item => (
-                  <ChecklistItem 
-                    key={item.id} 
-                    item={item} 
-                    onToggle={() => toggleItem(item.id)} 
-                    onRemove={() => removePackingItem(item.id)} 
-                    onEdit={(newText) => editPackingItem(item.id, newText)} 
-                  />
-                ))}
-              </Reorder.Group>
-              {activeChecklist.items.length === 0 && (
-                <p className="text-sm font-medium text-slate-400 text-center py-4 bg-slate-50 rounded-2xl border border-slate-200 border-dashed">Esta lista está vacía.</p>
-              )}
-            </div>
-
-            <form onSubmit={handleAddPackingItem} className="flex gap-2">
-              <input 
-                type="text"
-                value={newPackingItem}
-                onChange={(e) => setNewPackingItem(e.target.value)}
-                placeholder={`Añadir ítem a ${activeChecklist.name}...`}
-                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-slate-900"
-              />
-              <button 
-                type="submit"
-                className="w-11 h-11 bg-orange-500 text-white rounded-xl flex items-center justify-center shrink-0 hover:bg-orange-600 active:scale-95 transition-all shadow-sm shadow-orange-200"
-                title="Añadir ítem"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
-            </form>
-          </div>
-        )}
-        {!activeChecklist && !isCreatingChecklist && (
-           <p className="text-sm font-medium text-slate-400 text-center py-4">No hay listas. Crea una nueva.</p>
-        )}
-      </section>
-
-      {/* Quick Notes */}
-      <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col">
-        <h3 className="font-bold text-slate-400 uppercase text-xs tracking-widest mb-4">Notas Rápidas</h3>
-        
-        <form 
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleAddNote();
-          }}
-          className="flex gap-2 items-start mb-4"
-        >
-          <textarea 
-            ref={noteInputRef}
-            value={newNote}
-            onChange={(e) => {
-              setNewNote(e.target.value);
-              e.target.style.height = 'auto';
-              e.target.style.height = `${Math.min(200, Math.max(44, e.target.scrollHeight))}px`;
-            }}
-            placeholder="Escribir apunte..."
-            rows={1}
-            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-slate-900 resize-none overflow-hidden min-h-[44px] transition-all"
-          />
-          <button 
-            type="submit"
-            onMouseDown={(e) => {
-              if (newNote.trim()) {
-                e.preventDefault();
-                handleAddNote();
-              }
-            }}
-            onTouchStart={(e) => {
-              if (newNote.trim()) {
-                e.preventDefault();
-                handleAddNote();
-              }
-            }}
-            disabled={!newNote.trim()}
-            className="w-11 h-11 bg-orange-500 text-white rounded-xl flex items-center justify-center shrink-0 hover:bg-orange-600 active:scale-95 transition-all shadow-sm shadow-orange-200 disabled:opacity-40 disabled:scale-100 disabled:shadow-none cursor-pointer"
-            title="Guardar nota"
-          >
-            <Plus className="w-5 h-5 pointer-events-none" />
-          </button>
-        </form>
-        <div className="space-y-3">
-          {notes.length === 0 ? (
-            <p className="text-sm font-medium text-slate-400 text-center py-4 bg-slate-50 rounded-2xl border border-slate-200 border-dashed">Aún no hay notas.</p>
-          ) : (
-            notes.map(note => (
-              <div key={note.id} className="bg-orange-50 p-4 rounded-2xl relative group border border-orange-100/80 transition-all">
-                <button 
-                  onClick={() => removeNote(note.id)} 
-                  className="absolute top-3 right-3 p-1 text-orange-300 hover:text-red-500 hover:bg-orange-100/80 rounded-lg transition-colors"
-                  title="Eliminar nota"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-                <p className="text-sm text-orange-950 whitespace-pre-wrap break-words [word-break:break-word] overflow-wrap-anywhere pr-8 leading-relaxed font-medium">
-                  {note.text}
-                </p>
-                <p className="text-[11px] font-extrabold text-orange-800/50 mt-2 tracking-wider uppercase">{note.date}</p>
+                  ))
+                )}
               </div>
-            ))
+            </section>
           )}
-        </div>
-      </section>
+
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
+

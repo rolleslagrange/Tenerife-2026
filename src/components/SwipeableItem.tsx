@@ -59,6 +59,7 @@ export function SwipeableItem({
         drag={isEditing || isSwipeDisabled ? false : "x"}
         dragConstraints={{ left: -110, right: 0 }}
         dragElastic={0.1}
+        dragMomentum={false}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onClickCapture={(e) => {
@@ -70,11 +71,13 @@ export function SwipeableItem({
           }
         }}
         animate={{ x: isRevealed ? -110 : 0 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 35 }}
         className={cn("relative bg-white w-full h-full z-10 rounded-[2rem] border transition-shadow transition-colors duration-300", isExpanded ? "border-slate-200 shadow-md ring-4 ring-slate-50/50" : "border-slate-100 shadow-sm")}
         style={{ touchAction: 'pan-y' }}
       >
         {children}
       </motion.div>
+
     </div>
   );
 }

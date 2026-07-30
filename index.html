@@ -9,6 +9,85 @@
     <link rel="apple-touch-icon" href="/icon.png" />
     <link rel="icon" type="image/png" href="/icon.png" />
     <title>Viaje Tenerife</title>
+    <!-- Dev Console & Eruda configuration -->
+    <script>
+      (function() {
+        var isIgnoredError = function(reason, msgStr) {
+          var str = String(msgStr || reason || '');
+          var name = reason && reason.name ? String(reason.name) : '';
+          return (
+            name === 'AbortError' ||
+            str.includes('Could not establish connection') ||
+            str.includes('Receiving end does not exist') ||
+            str.includes('content.js') ||
+            str.includes('user aborted') ||
+            str.includes('AbortError') ||
+            str.includes('chrome.runtime')
+          );
+        };
+
+        // 1. Intercept window.addEventListener to wrap all 'unhandledrejection' listeners (including Eruda's)
+        var origAddEventListener = window.addEventListener;
+        window.addEventListener = function(type, listener, options) {
+          if (type === 'unhandledrejection' && typeof listener === 'function') {
+            var wrappedListener = function(event) {
+              var reason = event ? event.reason : null;
+              var msg = reason ? (reason.message || String(reason) || (reason.stack || '')) : '';
+              if (isIgnoredError(reason, msg)) {
+                if (event && typeof event.preventDefault === 'function') {
+                  event.preventDefault();
+                }
+                return; // Drop event so Eruda never receives it!
+              }
+              return listener.call(this, event);
+            };
+            return origAddEventListener.call(window, type, wrappedListener, options);
+          }
+          return origAddEventListener.call(window, type, listener, options);
+        };
+
+        // 2. Intercept window.onerror globally
+        var origOnError = window.onerror;
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+          if (isIgnoredError(error, msg) || isIgnoredError(null, url)) {
+            return true; // Suppress error
+          }
+          if (typeof origOnError === 'function') {
+            return origOnError.apply(this, arguments);
+          }
+          return false;
+        };
+
+        // 3. Intercept console.error globally
+        var origConsoleError = console.error;
+        console.error = function() {
+          var fullMsg = Array.prototype.slice.call(arguments).map(function(arg) {
+            try { return typeof arg === 'object' ? JSON.stringify(arg) : String(arg); } catch(e) { return String(arg); }
+          }).join(' ');
+
+          if (isIgnoredError(null, fullMsg)) {
+            return;
+          }
+          origConsoleError.apply(console, arguments);
+        };
+
+        // 4. Unregister previous dev ServiceWorkers
+        if ('serviceWorker' in navigator && (location.hostname === 'localhost' || location.hostname.startsWith('192.168.'))) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for (var r of registrations) {
+              r.unregister();
+            }
+          });
+        }
+      })();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+    <script>
+      // 5. Initialize Eruda
+      if (/Mobile|Android|iPhone|iPad/i.test(navigator.userAgent) || location.search.includes('debug')) {
+        eruda.init();
+      }
+    </script>
   </head>
   <body class="bg-slate-200">
     <!-- Wrap root in standard app container -->

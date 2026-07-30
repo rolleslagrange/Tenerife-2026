@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Plus, MapPin, Trash2, Search, Loader2, Link as LinkIcon, Menu, X, List, Utensils, Camera, TreePine, ShoppingBag, Bed, Info, Filter, Maximize, Navigation } from 'lucide-react';
+import { Plus, MapPin, Trash2, Search, Loader2, Link as LinkIcon, Menu, X, List, Utensils, Camera, TreePine, ShoppingBag, Bed, Info, Filter, Maximize, Navigation, Waves, FerrisWheel, Palmtree, Ticket, Umbrella, BedDouble, UtensilsCrossed, Building2 } from 'lucide-react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { cn, generateId } from '../lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -17,13 +18,13 @@ interface Location {
 }
 
 export const MARKER_TYPES = [
-  { id: 'default', label: 'Ubicación', icon: MapPin, color: 'bg-blue-500', shadow: 'shadow-blue-500/50', textColor: 'text-blue-500', borderColor: 'border-blue-200' },
-  { id: 'food', label: 'Comida', icon: Utensils, color: 'bg-orange-500', shadow: 'shadow-orange-500/50', textColor: 'text-orange-500', borderColor: 'border-orange-200' },
-  { id: 'attraction', label: 'Atracción', icon: Camera, color: 'bg-purple-500', shadow: 'shadow-purple-500/50', textColor: 'text-purple-500', borderColor: 'border-purple-200' },
-  { id: 'nature', label: 'Naturaleza', icon: TreePine, color: 'bg-green-500', shadow: 'shadow-green-500/50', textColor: 'text-green-500', borderColor: 'border-green-200' },
-  { id: 'shopping', label: 'Compras', icon: ShoppingBag, color: 'bg-pink-500', shadow: 'shadow-pink-500/50', textColor: 'text-pink-500', borderColor: 'border-pink-200' },
-  { id: 'hotel', label: 'Alojamiento', icon: Bed, color: 'bg-indigo-500', shadow: 'shadow-indigo-500/50', textColor: 'text-indigo-500', borderColor: 'border-indigo-200' },
-  { id: 'other', label: 'Otro', icon: Info, color: 'bg-slate-500', shadow: 'shadow-slate-500/50', textColor: 'text-slate-500', borderColor: 'border-slate-200' },
+  { id: 'default', label: 'Ubicación', icon: MapPin, color: 'bg-slate-600', shadow: 'shadow-slate-600/50', textColor: 'text-slate-600', borderColor: 'border-slate-200' },
+  { id: 'city', label: 'Ciudad', icon: Building2, color: 'bg-pink-500', shadow: 'shadow-pink-500/50', textColor: 'text-pink-500', borderColor: 'border-pink-200' },
+  { id: 'food', label: 'Comida', icon: UtensilsCrossed, color: 'bg-amber-500', shadow: 'shadow-amber-500/50', textColor: 'text-amber-500', borderColor: 'border-amber-200' },
+  { id: 'nature', label: 'Naturaleza', icon: Palmtree, color: 'bg-emerald-500', shadow: 'shadow-emerald-500/50', textColor: 'text-emerald-500', borderColor: 'border-emerald-200' },
+  { id: 'park', label: 'Parque', icon: Ticket, color: 'bg-rose-500', shadow: 'shadow-rose-500/50', textColor: 'text-rose-500', borderColor: 'border-rose-200' },
+  { id: 'beach', label: 'Playa', icon: Waves, color: 'bg-blue-500', shadow: 'shadow-blue-500/50', textColor: 'text-blue-500', borderColor: 'border-blue-200' },
+  { id: 'hotel', label: 'Alojamiento', icon: BedDouble, color: 'bg-violet-500', shadow: 'shadow-violet-500/50', textColor: 'text-violet-500', borderColor: 'border-violet-200' },
 ];
 
 // Fix Leaflet's default icon path issues in React
@@ -63,6 +64,21 @@ const createCustomIcon = (isSelected: boolean, typeId?: string) => {
 
   iconCache.set(key, icon);
   return icon;
+};
+
+const createClusterCustomIcon = (cluster: any) => {
+  const count = cluster.getChildCount();
+  
+  return L.divIcon({
+    className: 'custom-leaflet-cluster',
+    html: `<div class="relative cursor-pointer group flex flex-col items-center justify-center h-full w-full">
+            <div class="relative w-10 h-10 bg-slate-800 shadow-lg shadow-slate-800/40 border-white border-2 rounded-full flex items-center justify-center transition-transform duration-300 group-hover:scale-110 z-50 ring-4 ring-slate-800/10">
+              <span class="text-white font-extrabold text-sm">${count}</span>
+            </div>
+          </div>`,
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
+  });
 };
 
 function MapEvents({ onMapClick, onMapDrag }: { onMapClick: () => void, onMapDrag: () => void }) {
@@ -354,19 +370,26 @@ export default function MapView() {
             onMapDrag={() => { setIsExpanded(false); setSelectedLocationId(null); }}
           />
           
-          {validLocations.map(loc => (
-            <Marker 
-              key={loc.id} 
-              position={[loc.lat, loc.lng]}
-              icon={createCustomIcon(selectedLocationId === loc.id, loc.type)}
-              eventHandlers={{
-                click: () => {
-                  setSelectedLocationId(loc.id);
-                  setIsExpanded(false);
-                },
-              }}
-            />
-          ))}
+          <MarkerClusterGroup
+            chunkedLoading
+            maxClusterRadius={40}
+            showCoverageOnHover={false}
+            iconCreateFunction={createClusterCustomIcon}
+          >
+            {validLocations.map(loc => (
+              <Marker 
+                key={loc.id} 
+                position={[loc.lat, loc.lng]}
+                icon={createCustomIcon(selectedLocationId === loc.id, loc.type)}
+                eventHandlers={{
+                  click: () => {
+                    setSelectedLocationId(loc.id);
+                    setIsExpanded(false);
+                  },
+                }}
+              />
+            ))}
+          </MarkerClusterGroup>
         </MapContainer>
       </div>
 
@@ -706,10 +729,10 @@ export default function MapView() {
                   setIsExpanded(false);
                 }
               }}
-              className="w-12 h-12 bg-white rounded-2xl shadow-xl flex items-center justify-center text-indigo-600 hover:bg-indigo-50 border border-slate-100 transition-colors hover:scale-105 active:scale-95"
+              className="w-12 h-12 bg-white rounded-2xl shadow-xl flex items-center justify-center text-violet-600 hover:bg-violet-50 border border-slate-100 transition-colors hover:scale-105 active:scale-95"
               title="Ir al Hotel"
             >
-              <Bed className="w-6 h-6" />
+              <BedDouble className="w-6 h-6" />
             </button>
           )}
           <button 

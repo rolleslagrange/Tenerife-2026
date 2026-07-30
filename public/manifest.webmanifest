@@ -1,0 +1,17 @@
+{
+  "name": "Viaje Tenerife",
+  "short_name": "Tenerife",
+  "description": "Planificador de viaje a Tenerife",
+  "theme_color": "#f97316",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "start_url": "/",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

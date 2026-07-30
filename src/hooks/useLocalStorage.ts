@@ -34,10 +34,12 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
 
   // Firestore -> Local Sync
   useEffect(() => {
+    let isMounted = true;
     const docRef = doc(db, 'app_state', key);
     const unsubscribe = onSnapshot(
       docRef,
       (docSnap) => {
+        if (!isMounted) return;
         if (docSnap.exists()) {
           const data = docSnap.data();
           const remoteValue = data.value as T;
@@ -69,12 +71,18 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
         }
       },
       (error) => {
+        if (!isMounted) return;
         // Silently handle Firestore errors (e.g. offline, unauthenticated) without touching local state
         console.warn(`Firestore snapshot listener warning for "${key}":`, error.message);
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      try {
+        unsubscribe();
+      } catch {}
+    };
   }, [key]);
 
   // Local -> Firestore Sync (only when storedValue changes via user action)
